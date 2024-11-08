@@ -168,3 +168,54 @@ def process_qcm_document(input_file, output_file):
         write_question_block(output_doc, current_question, current_answers, question_counter)
     
     output_doc.save(output_file)
+
+@app.route('/', methods=['GET', 'POST'])
+def upload_file():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return 'No file uploaded'
+        
+        file = request.files['file']
+        if file.filename == '':
+            return 'No file selected'
+        
+        if file and file.filename.endswith('.docx'):
+            # Secure the filename
+            filename = secure_filename(file.filename)
+            
+            # Create temporary directories if they don't exist
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
+            
+            # Save paths
+            input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            temp_path = os.path.join(app.config['OUTPUT_FOLDER'], 'temp_' + filename)
+            output_path = os.path.join(app.config['OUTPUT_FOLDER'], 'processed_' + filename)
+            
+            try:
+                # Save and process the file
+                file.save(input_path)
+                preprocess_document(input_path, temp_path)
+                process_qcm_document(temp_path, output_path)
+                
+                # Send the file
+                response = send_file(output_path, as_attachment=True)
+                
+                # Clean up files after sending
+                @response.call_on_close
+                def cleanup():
+                    try:
+                        os.remove(input_path)
+                        os.remove(temp_path)
+                        os.remove(output_path)
+                    except:
+                        pass
+                
+                return response
+                
+            except Exception as e:
+                return f'An error occurred: {str(e)}'
+            
+        return 'Invalid file type'
+    
+    return render_template('upload.html')
